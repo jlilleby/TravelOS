@@ -16,7 +16,12 @@ jobs:
 
       - name: Create config.php from GitHub Secret
         run: |
-          printf '%s' "${{ secrets.CONFIG_PHP }}" > config.php
+          printf '%s' "${{ secrets.CONFIG_PHP }}" | base64 --decode > config.php
+
+      - name: Verify config.php exists
+        run: |
+          test -f config.php
+          php -l config.php
 
       - name: Deploy via FTP/FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.4.0
