@@ -1,11 +1,9 @@
 <?php
 declare(strict_types=1);
 
-session_start([
-  'cookie_httponly' => true,
-  'cookie_secure' => defined('COOKIE_SECURE') ? COOKIE_SECURE : false,
-  'cookie_samesite' => 'Lax'
-]);
+require_once __DIR__ . '/../auth.php';
+travel_os_start_session(defined('SESSION_LIFETIME') ? SESSION_LIFETIME : 0);
+travel_os_restore_session_from_cookie();
 
 $configPath = __DIR__ . '/../config.php';
 if (!file_exists($configPath)) {
