@@ -32,9 +32,11 @@ jobs:
           protocol: ftp
           local-dir: ./
           server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          dangerous-clean-slate: false
           exclude: |
             **/.git*
             **/.git*/**
             **/node_modules/**
             .github/**
             README.md
+            database.sql
