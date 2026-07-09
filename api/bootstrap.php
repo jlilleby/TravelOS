@@ -34,6 +34,20 @@ function db(): PDO {
   return $pdo;
 }
 
+function ensure_packing_category_column(): void {
+  $pdo = db();
+  try {
+    $pdo->query('SELECT category FROM packing_items LIMIT 1');
+  } catch (PDOException $e) {
+    if (strpos($e->getMessage(), 'Unknown column') !== false && strpos($e->getMessage(), 'category') !== false) {
+      $pdo->exec('ALTER TABLE packing_items ADD COLUMN category VARCHAR(100) NULL');
+    } else {
+      throw $e;
+    }
+  }
+}
+ensure_packing_category_column();
+
 function json_response($data, int $status = 200): void {
   http_response_code($status);
   header('Content-Type: application/json; charset=utf-8');
