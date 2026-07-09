@@ -1,0 +1,7 @@
+<?php
+require_once __DIR__ . '/bootstrap.php'; require_auth(); $pdo=db();
+if(method()==='GET'){ $id=int_param('id'); if($id){$s=$pdo->prepare('SELECT * FROM trips WHERE id=?');$s->execute([$id]);json_response($s->fetch()?:null);} json_response($pdo->query('SELECT * FROM trips ORDER BY start_date IS NULL, start_date DESC, created_at DESC')->fetchAll()); }
+if(method()==='POST'){ $d=input_json(); $s=$pdo->prepare('INSERT INTO trips (name,destination,start_date,end_date,notes) VALUES (?,?,?,?,?)'); $s->execute([clean_string($d['name']??null,255)?:'Ny tur',clean_string($d['destination']??null,255),clean_string($d['start_date']??null,20),clean_string($d['end_date']??null,20),clean_string($d['notes']??null,5000)]); json_response(['id'=>(int)$pdo->lastInsertId()],201); }
+if(method()==='PUT'){ $d=input_json(); $id=(int)($d['id']??0); if(!$id)json_response(['error'=>'Missing id'],400); $s=$pdo->prepare('UPDATE trips SET name=?,destination=?,start_date=?,end_date=?,notes=? WHERE id=?'); $s->execute([clean_string($d['name']??null,255)?:'Ny tur',clean_string($d['destination']??null,255),clean_string($d['start_date']??null,20),clean_string($d['end_date']??null,20),clean_string($d['notes']??null,5000),$id]); json_response(['ok'=>true]); }
+if(method()==='DELETE'){ $id=int_param('id'); if(!$id)json_response(['error'=>'Missing id'],400); $s=$pdo->prepare('DELETE FROM trips WHERE id=?');$s->execute([$id]);json_response(['ok'=>true]); }
+json_response(['error'=>'Method not allowed'],405);

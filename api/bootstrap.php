@@ -1,0 +1,62 @@
+<?php
+declare(strict_types=1);
+
+session_start([
+  'cookie_httponly' => true,
+  'cookie_secure' => defined('COOKIE_SECURE') ? COOKIE_SECURE : false,
+  'cookie_samesite' => 'Lax'
+]);
+
+$configPath = __DIR__ . '/../config.php';
+if (!file_exists($configPath)) {
+  http_response_code(500);
+  header('Content-Type: application/json');
+  echo json_encode(['error' => 'Missing config.php. Copy config.example.php to config.php.']);
+  exit;
+}
+require_once $configPath;
+
+function require_auth(): void {
+  if (empty($_SESSION['travel_os_authenticated'])) {
+    http_response_code(401);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Not authenticated']);
+    exit;
+  }
+}
+
+function db(): PDO {
+  static $pdo = null;
+  if ($pdo instanceof PDO) return $pdo;
+  $dsn = 'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=' . DB_CHARSET;
+  $pdo = new PDO($dsn, DB_USER, DB_PASS, [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+  ]);
+  return $pdo;
+}
+
+function json_response($data, int $status = 200): void {
+  http_response_code($status);
+  header('Content-Type: application/json; charset=utf-8');
+  echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+  exit;
+}
+
+function input_json(): array {
+  $raw = file_get_contents('php://input');
+  $data = json_decode($raw ?: '{}', true);
+  return is_array($data) ? $data : [];
+}
+function method(): string { return $_SERVER['REQUEST_METHOD'] ?? 'GET'; }
+function int_param(string $name, ?int $default = null): ?int { return isset($_GET[$name]) ? (int)$_GET[$name] : $default; }
+function clean_string($value, int $max = 1000): ?string {
+  if ($value === null) return null;
+  $s = trim((string)$value);
+  if ($s === '') return null;
+  return mb_substr($s, 0, $max);
+}
+function allowed_upload_extension(string $filename): bool {
+  $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+  return in_array($ext, ALLOWED_EXTENSIONS, true);
+}
