@@ -73,12 +73,15 @@ function downloadText(filename,content){const blob=new Blob([content],{type:"tex
 function packingCategoryLabel(item){return String(item?.category||"").trim()||"General";}
 function packingExportText(){const t=currentTrip();const groups={};state.packing.forEach(item=>{const cat=packingCategoryLabel(item);(groups[cat]??=[]).push(item);});const lines=[`Travel OS - Packing list`,`Trip: ${t?.name||""}`,`Destination: ${t?.destination||""}`,`Dates: ${t?.start_date||""} → ${t?.end_date||""}`,"","Categories:"];const categories=Object.keys(groups).sort((a,b)=>a.localeCompare(b));categories.forEach((cat,index)=>{lines.push(`${index+1}. ${cat}`);groups[cat].forEach(item=>{const stateLabel=Number(item.packed)?"x":" ";lines.push(`   - [${stateLabel}] ${item.item_text}${item.place?` (${item.place})`:""}`);});lines.push("");});if(!categories.length)lines.push("No items added yet.");return lines.join("\n").trim();}
 function exportPackingList(){downloadText(`${(currentTrip()?.name||"trip").toLowerCase().replace(/[^a-z0-9]+/g,"-")}-packing-list.txt`, packingExportText());}
+function tripExportData(){const t=currentTrip();return {trip:t,events:state.events,documents:state.documents,packing:state.packing,budget:state.budget};}
+function tripExportJson(){return JSON.stringify(tripExportData(),null,2);} 
 function itineraryExportData(){return buildTimelineOccurrences(state.events).map(o=>({date:o.date,time:o.time,occurrenceType:o.occurrenceType,title:o.title,subtitle:o.subtitle,sourceEventId:o.sourceEventId,isVirtual:o.isVirtual}));}
 function itineraryMarkdown(){const lines=[`# Travel OS itinerary`, ``, `Trip: ${currentTrip()?.name||""}`, ``, ...itineraryExportData().map(o=>`- ${o.date}${o.time?` ${o.time}`:""} — ${o.title}${o.subtitle?` (${o.subtitle})`:""}`)];return lines.join("\n");}
 function itineraryJson(){return JSON.stringify(itineraryExportData(),null,2);}
 function exportFullItinerary(){downloadText(`${(currentTrip()?.name||"trip").toLowerCase().replace(/[^a-z0-9]+/g,"-")}-itinerary.txt`, itineraryText());}
 function exportFullItineraryMarkdown(){downloadText(`${(currentTrip()?.name||"trip").toLowerCase().replace(/[^a-z0-9]+/g,"-")}-itinerary.md`, itineraryMarkdown());}
 function exportFullItineraryJson(){downloadText(`${(currentTrip()?.name||"trip").toLowerCase().replace(/[^a-z0-9]+/g,"-")}-itinerary.json`, itineraryJson());}
+function exportTripJson(){downloadText(`${(currentTrip()?.name||"trip").toLowerCase().replace(/[^a-z0-9]+/g,"-")}-trip.json`, tripExportJson());}
 function openAllRoutesInGoogleMaps(){
   const points=itineraryPoints();
   const url=mapsUrlFromPoints(points,"driving");
