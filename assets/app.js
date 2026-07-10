@@ -1,6 +1,6 @@
 const API={trips:"api/trips.php",events:"api/events.php",documents:"api/documents.php",packing:"api/packing.php",budget:"api/budget.php",import:"api/import.php"};
 const EVENT_TYPES=["flight","drive","camp","photo","eclipse","car","shopping","food","fuel","hike","poi","reminder"];
-const PACKING_CATEGORIES=["General","Toiletries","Clothing (3-layer protocol)","Footwear","Electronics","Documents","Health & medicine","Outdoor gear"];
+const PACKING_CATEGORIES=["General","Toiletries","Base layer (underwear, wool, thermal)","Mid layer (fleece, sweater)","Outer layer (jacket, shell)","Footwear","Electronics","Documents","Health & medicine","Outdoor gear"];
 const FIELD_SETS={
 flight:[["flightNo","Flightnummer","text"],["airline","Flyselskap","text"],["fromAirport","Fra flyplass","text"],["toAirport","Til flyplass","text"],["booking","Bookingreferanse","text"],["checkinStatus","Check-in status","select","Planlagt|Check-in åpner|Checked in|Boarding|Fullført"],["seat","Sete","text"],["gate","Gate","text"],["baggage","Bagasje","text"]],
 drive:[["startLocation","Fra","text"],["endLocation","Til","text"],["viaLocations","Via / stopp underveis, én per linje","textarea"],["estimatedDriveTime","Estimat kjøretid","text"],["estimatedKm","Estimat km","number"],["routeStatus","Rute-status","select","Planlagt|Bekreftet|Kjørt|Endret"]],
