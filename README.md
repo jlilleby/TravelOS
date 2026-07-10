@@ -28,7 +28,9 @@ Travel OS helps you manage a trip from planning to execution. You can:
 - api/: PHP API endpoints for trips, events, documents, packing, budget, and import
 - assets/: frontend JavaScript and stylesheets
 - uploads/: uploaded files are stored here
-- database.sql: database schema and initial demo data
+- database.sql: legacy combined schema file
+- database/migrations/: numbered SQL migrations and rollbacks
+- database/README.md: database migration and schema documentation
 - config.php: runtime configuration for database and app settings
 
 ## Requirements

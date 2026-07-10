@@ -46,7 +46,20 @@ function ensure_packing_category_column(): void {
     }
   }
 }
+function ensure_event_display_mode_column(): void {
+  $pdo = db();
+  try {
+    $pdo->query('SELECT display_mode FROM events LIMIT 1');
+  } catch (PDOException $e) {
+    if (strpos($e->getMessage(), 'Unknown column') !== false && strpos($e->getMessage(), 'display_mode') !== false) {
+      $pdo->exec("ALTER TABLE events ADD COLUMN display_mode VARCHAR(20) NOT NULL DEFAULT 'single'");
+    } else {
+      throw $e;
+    }
+  }
+}
 ensure_packing_category_column();
+ensure_event_display_mode_column();
 
 function json_response($data, int $status = 200): void {
   http_response_code($status);
