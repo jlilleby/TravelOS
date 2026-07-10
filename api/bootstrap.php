@@ -58,8 +58,42 @@ function ensure_event_display_mode_column(): void {
     }
   }
 }
+function ensure_saved_views_table(): void {
+  $pdo = db();
+  $pdo->exec("CREATE TABLE IF NOT EXISTS saved_views (
+    id CHAR(36) PRIMARY KEY,
+    user_id CHAR(36) NOT NULL,
+    trip_id INT NULL,
+    name VARCHAR(100) NOT NULL,
+    view_type VARCHAR(50) NOT NULL DEFAULT 'timeline',
+    filter_json JSON NOT NULL,
+    is_default TINYINT(1) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_saved_views_trip FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
+    INDEX idx_saved_views_scope (user_id, trip_id, view_type),
+    INDEX idx_saved_views_default (user_id, is_default)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
 ensure_packing_category_column();
 ensure_event_display_mode_column();
+ensure_saved_views_table();
+
+function generate_uuid_v4(): string {
+  $bytes = random_bytes(16);
+  $bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x40);
+  $bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80);
+  $hex = bin2hex($bytes);
+  return sprintf('%s-%s-%s-%s-%s', substr($hex, 0, 8), substr($hex, 8, 4), substr($hex, 12, 4), substr($hex, 16, 4), substr($hex, 20, 12));
+}
+
+function current_user_id(): string {
+  if (!empty($_SESSION['travel_os_user_id'])) return (string) $_SESSION['travel_os_user_id'];
+  $seed = defined('APP_PASSWORD_HASH') ? (string) APP_PASSWORD_HASH : session_id();
+  $hash = sha1('travel-os-user:' . $seed);
+  $_SESSION['travel_os_user_id'] = sprintf('%s-%s-%s-%s-%s', substr($hash, 0, 8), substr($hash, 8, 4), substr($hash, 12, 4), substr($hash, 16, 4), substr($hash, 20, 12));
+  return (string) $_SESSION['travel_os_user_id'];
+}
 
 function json_response($data, int $status = 200): void {
   http_response_code($status);
