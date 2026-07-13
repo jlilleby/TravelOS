@@ -14,6 +14,44 @@ Travel OS helps you manage a trip from planning to execution. You can:
 - import trip data from JSON
 - protect the app with a password-based login
 
+## Cleanup release (Timeline + Routes simplification)
+
+This release keeps the existing PHP/MySQL architecture, but removes complexity from the Timeline and Routes flows:
+
+- Timeline now focuses on what happens, when, and basic details.
+- New event creation is moved to a modal.
+- Advanced filters are reduced to search, event type, from date, and to date.
+- Quick filters are: Alle, Transport, Overnatting, POI, Foto.
+- Saved Views are disabled behind a feature flag (`FEATURE_SAVED_VIEWS`, default `false`).
+- Focus Modes are removed from the PHP version.
+- Event types are standardized to:
+	- `flight`
+	- `drive`
+	- `accommodation`
+	- `car_rental`
+	- `ferry`
+	- `poi`
+	- `photo`
+	- `food`
+	- `fuel`
+	- `shopping`
+	- `hike`
+	- `reminder`
+	- `special`
+- `accommodation` and `special` store subtype in `data_json.subtype`.
+- `display_mode` is simplified to `timeline` or `status`.
+- Multi-day events are still stored as one event row.
+- Routes only uses physical driving events (`drive`) and Google Maps route construction is based on:
+	- `data.startLocation`
+	- `data.viaLocations`
+	- `data.endLocation`
+- `viaLocations` supports semicolon and newline splitting and strips `via:` prefixes.
+- Route views are: `I dag`, `Per dag`, `Hele roadtripen`.
+- Full roadtrip routes are segmented for Google Maps when there are too many stops.
+- Export actions are moved into a dedicated Export section.
+
+Legacy JSON imports remain supported via backend normalization of old event types and old `display_mode` values.
+
 ## Tech stack
 
 - PHP for the server-side application and API endpoints
@@ -69,6 +107,17 @@ define('ALLOWED_EXTENSIONS', ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'txt', 'docx'
 - The app expects a configured config.php file before it will run.
 - Uploaded files are stored on disk and referenced from the database.
 - The project is currently a lightweight single-user travel planner and is not a full multi-user SaaS application.
+- To run the cleanup migration:
+
+```bash
+mysql -u root -p travel_os < database/migrations/004_cleanup_release_event_model.sql
+```
+
+- Rollback script:
+
+```bash
+mysql -u root -p travel_os < database/migrations/004_cleanup_release_event_model.rollback.sql
+```
 
 ## License
 

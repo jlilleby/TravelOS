@@ -5,6 +5,10 @@ require_auth();
 $pdo = db();
 $userId = current_user_id();
 
+if (!is_saved_views_enabled()) {
+  json_response(['error' => 'Saved views is disabled by feature flag'], 404);
+}
+
 function saved_view_row(array $row): array {
   $row['filters'] = $row['filter_json'] ? json_decode($row['filter_json'], true) : [];
   unset($row['filter_json']);
