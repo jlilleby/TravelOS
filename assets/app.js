@@ -7,8 +7,6 @@ const API = {
   import: "api/import.php",
 };
 
-const FEATURE_SAVED_VIEWS = false;
-
 const EVENT_TYPES = [
   "flight",
   "drive",
@@ -738,7 +736,7 @@ function budget() {
 function settings() {
   const t = currentTrip();
   return `
-    ${header("Oppsett", "Settings", FEATURE_SAVED_VIEWS ? "Saved Views aktiv." : "Saved Views deaktivert via feature flag.")}
+    ${header("Oppsett", "Settings", "Administrer turdata og import.")}
     <div class="grid cols-2">
       <div class="card">
         <h3>Turinfo</h3>

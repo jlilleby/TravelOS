@@ -14,10 +14,6 @@ if (!file_exists($configPath)) {
 }
 require_once $configPath;
 
-if (!defined('FEATURE_SAVED_VIEWS')) {
-  define('FEATURE_SAVED_VIEWS', false);
-}
-
 function require_auth(): void {
   if (empty($_SESSION['travel_os_authenticated'])) {
     http_response_code(401);
@@ -62,26 +58,8 @@ function ensure_event_display_mode_column(): void {
     }
   }
 }
-function ensure_saved_views_table(): void {
-  $pdo = db();
-  $pdo->exec("CREATE TABLE IF NOT EXISTS saved_views (
-    id CHAR(36) PRIMARY KEY,
-    user_id CHAR(36) NOT NULL,
-    trip_id INT NULL,
-    name VARCHAR(100) NOT NULL,
-    view_type VARCHAR(50) NOT NULL DEFAULT 'timeline',
-    filter_json JSON NOT NULL,
-    is_default TINYINT(1) NOT NULL DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_saved_views_trip FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
-    INDEX idx_saved_views_scope (user_id, trip_id, view_type),
-    INDEX idx_saved_views_default (user_id, is_default)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-}
 ensure_packing_category_column();
 ensure_event_display_mode_column();
-ensure_saved_views_table();
 
 function generate_uuid_v4(): string {
   $bytes = random_bytes(16);
@@ -97,10 +75,6 @@ function current_user_id(): string {
   $hash = sha1('travel-os-user:' . $seed);
   $_SESSION['travel_os_user_id'] = sprintf('%s-%s-%s-%s-%s', substr($hash, 0, 8), substr($hash, 8, 4), substr($hash, 12, 4), substr($hash, 16, 4), substr($hash, 20, 12));
   return (string) $_SESSION['travel_os_user_id'];
-}
-
-function is_saved_views_enabled(): bool {
-  return (bool) FEATURE_SAVED_VIEWS;
 }
 
 function normalize_display_mode_value(?string $value, string $eventType = ''): string {

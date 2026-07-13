@@ -56,3 +56,6 @@ SET display_mode = CASE
   WHEN LOWER(display_mode) IN ('timeline', 'single', 'range') THEN 'timeline'
   ELSE CASE WHEN event_type = 'accommodation' THEN 'status' ELSE 'timeline' END
 END;
+
+-- Remove deprecated saved views feature storage.
+DROP TABLE IF EXISTS saved_views;

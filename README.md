@@ -22,7 +22,6 @@ This release keeps the existing PHP/MySQL architecture, but removes complexity f
 - New event creation is moved to a modal.
 - Advanced filters are reduced to search, event type, from date, and to date.
 - Quick filters are: Alle, Transport, Overnatting, POI, Foto.
-- Saved Views are disabled behind a feature flag (`FEATURE_SAVED_VIEWS`, default `false`).
 - Focus Modes are removed from the PHP version.
 - Event types are standardized to:
 	- `flight`
