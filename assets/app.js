@@ -498,16 +498,6 @@ function drivePoints(event) {
   return compact;
 }
 
-function mapSegments(points, maxPoints = 10) {
-  if (points.length < 2) return [];
-  const segments = [];
-  for (let i = 0; i < points.length; i += maxPoints - 1) {
-    const part = points.slice(i, i + maxPoints);
-    if (part.length >= 2) segments.push(part);
-  }
-  return segments;
-}
-
 function googleMapsUrl(points) {
   const p = [...points];
   if (p.length < 2) return "";
@@ -534,6 +524,23 @@ function roadtripPoints() {
     out.push(...points.slice(out[out.length - 1] === points[0] ? 1 : 0));
   });
   return out;
+}
+
+function roadtripDaySegments() {
+  const byDay = {};
+  itineraryEvents().filter((e) => e.event_type === "drive").forEach((e) => {
+    (byDay[e.start_date] ||= []).push(e);
+  });
+
+  return Object.keys(byDay).sort().map((day) => {
+    const points = byDay[day].flatMap((e) => drivePoints(e));
+    const compact = points.filter((p, i) => i === 0 || p !== points[i - 1]);
+    return {
+      day,
+      points: compact,
+      url: googleMapsUrl(compact),
+    };
+  }).filter((segment) => segment.points.length >= 2);
 }
 
 function driveEventsForDate(date) {
@@ -577,12 +584,12 @@ function routesPerDayCard() {
 
 function routesRoadtripCard() {
   const points = roadtripPoints();
-  const segments = mapSegments(points);
+  const segments = roadtripDaySegments();
   return `
     <div class="card" style="margin-top:18px">
       <h3>Hele roadtripen</h3>
-      ${points.length >= 2 ? `<p class="muted">${points.length} stopp · ${segments.length} Google Maps-segment(er)</p>
-      <div class="list">${segments.map((segment, i) => `<div class="item"><div><strong>Segment ${i + 1}</strong><br><span class="muted">${segment.map(esc).join(" → ")}</span></div><a target="_blank" href="${esc(googleMapsUrl(segment))}"><button class="small secondary">Åpne</button></a></div>`).join("")}</div>` : `<div class="empty">Ingen komplett kjørerute ennå.</div>`}
+      ${points.length >= 2 ? `<p class="muted">${points.length} stopp · ${segments.length} dag-segment(er)</p>
+      <div class="list">${segments.map((segment) => `<div class="item"><div><strong>${esc(segment.day)}</strong><br><span class="muted">${segment.points.map(esc).join(" → ")}</span></div><a target="_blank" href="${esc(segment.url)}"><button class="small secondary">Åpne dag</button></a></div>`).join("")}</div>` : `<div class="empty">Ingen komplett kjørerute ennå.</div>`}
     </div>
   `;
 }
