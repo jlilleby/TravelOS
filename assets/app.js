@@ -748,17 +748,14 @@ async function geocodeValue(query) {
     }
   }
 
-  const url = new URL("https://nominatim.openstreetmap.org/search");
-  url.searchParams.set("format", "jsonv2");
-  url.searchParams.set("limit", "1");
-  url.searchParams.set("q", trimmed);
-
-  const response = await fetch(url.toString(), { headers: { Accept: "application/json" } });
+  const response = await fetch(`${API.import.replace("import.php", "geocode.php")}?q=${encodeURIComponent(trimmed)}`, {
+    credentials: "same-origin",
+    headers: { Accept: "application/json" },
+  });
   if (!response.ok) return null;
-  const payload = await response.json().catch(() => []);
-  const first = Array.isArray(payload) ? payload[0] : null;
-  if (!first) return null;
-  const result = { lat: Number(first.lat), lng: Number(first.lon) };
+  const payload = await response.json().catch(() => null);
+  if (!payload || payload.ok !== true || !payload.coords) return null;
+  const result = { lat: Number(payload.coords.lat), lng: Number(payload.coords.lng) };
   if (!Number.isFinite(result.lat) || !Number.isFinite(result.lng)) return null;
   localStorage.setItem(key, JSON.stringify(result));
   return result;
@@ -805,11 +802,11 @@ async function renderMapView() {
     const records = mapPlaceRecords();
     const geoByValue = new Map();
     const uniqueValues = [...new Set(records.map((record) => record.value))];
-
-    await Promise.all(uniqueValues.map(async (value) => {
+    for (const value of uniqueValues.slice(0, 12)) {
       const resolved = await geocodeValue(value);
       if (resolved) geoByValue.set(value, resolved);
-    }));
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
 
     if (token !== mapRenderToken) return;
 
@@ -854,7 +851,6 @@ async function renderMapView() {
       map.fitBounds(bounds, { padding: [28, 28] });
       status.textContent = `Kartet viser ${records.length} punkt(er) og ${mapEvents().filter((event) => event.event_type === "drive").length} rute(r).`;
     } else {
-      map.setView([59.9, 10.7], 4);
       status.textContent = "Ingen steddata funnet ennå. Legg inn location, startLocation eller endLocation for å få markører.";
     }
   } catch (err) {
