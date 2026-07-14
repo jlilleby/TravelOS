@@ -140,6 +140,7 @@ const state = {
   view: "dashboard",
   routesView: "today",
   mapMode: "all",
+  timelineFocusEventId: null,
 };
 
 const MAP_FILTERS = {
@@ -459,7 +460,7 @@ function timeline() {
     ${Object.keys(groups).sort().map((date) => `
       <div class="day-heading"><strong>${date}</strong><span>${dayHeaderStatus(groups[date])}</span></div>
       <div class="card">
-        ${groups[date].filter((row) => row.kind !== "status").map((row) => occurrenceCard(row)).join("") || `<div class="empty">Kun status for denne dagen.</div>`}
+        ${groups[date].filter((row) => row.kind !== "status").map((row) => occurrenceCard(row, state.timelineFocusEventId)).join("") || `<div class="empty">Kun status for denne dagen.</div>`}
       </div>
     `).join("") || `<div class="empty">Ingen events matcher filtrene.</div>`}
   `;
@@ -477,10 +478,11 @@ function basicEventDetails(event) {
   return keys.filter((k) => String(d[k] || "").trim()).map((k) => `<span class="badge">${esc(k)}: ${esc(String(d[k]))}</span>`).join(" ");
 }
 
-function occurrenceCard(row) {
+function occurrenceCard(row, focusEventId = null) {
   const e = row.event;
+  const isFocused = Number(focusEventId) === Number(e.id);
   return `
-    <div class="event ${row.kind === "status" ? "event-continuation" : ""}">
+    <div class="event ${row.kind === "status" ? "event-continuation" : ""} ${isFocused ? "event-focused" : ""}" id="timeline-event-${e.id}">
       <div class="event-time">${esc(row.time ? row.time.slice(0, 5) : (row.kind === "status" ? "Status" : ""))}</div>
       <div class="event-body">
         <div class="event-title"><strong>${icon(e.event_type)} ${esc(e.title)}</strong><span class="badge">${esc(row.headline)}</span></div>
@@ -710,7 +712,7 @@ function mapView() {
           <h3>Datagrunnlag</h3>
           <p class="muted">${items.length} kartpunkter · ${routeCount} kjørerute(r)</p>
           <div class="list">
-            ${items.slice(0, 12).map((item) => `<div class="item"><div><strong>${icon(item.event.event_type)} ${esc(item.event.title)}</strong><br><span class="muted">${esc(item.label)}: ${esc(item.value)}</span></div></div>`).join("") || `<div class="empty">Ingen geodatakilder funnet.</div>`}
+            ${items.slice(0, 12).map((item) => `<div class="item"><div><strong>${icon(item.event.event_type)} ${esc(item.event.title)}</strong><br><span class="muted">${esc(item.label)}: ${esc(item.value)}</span></div><button class="small secondary" data-timeline-event="${item.event.id}">Timeline</button></div>`).join("") || `<div class="empty">Ingen geodatakilder funnet.</div>`}
           </div>
           ${items.length > 12 ? `<p class="muted" style="margin-top:12px">Viser de første 12 treffene. Resten brukes fortsatt i kartet.</p>` : ""}
         </div>
@@ -823,7 +825,7 @@ async function renderMapView() {
       if (!resolved) return;
       const key = `${resolved.lat.toFixed(5)},${resolved.lng.toFixed(5)}`;
       const existing = markerIndex.get(key);
-      const popupLine = `<div><strong>${icon(record.event.event_type)} ${esc(record.event.title)}</strong><br><span>${esc(record.label)}: ${esc(record.value)}</span><br><span class="muted">${esc(record.event.start_date)} ${esc((record.event.start_time || "").slice(0, 5))}</span></div>`;
+      const popupLine = `<div><strong>${icon(record.event.event_type)} ${esc(record.event.title)}</strong><br><span>${esc(record.label)}: ${esc(record.value)}</span><br><span class="muted">${esc(record.event.start_date)} ${esc((record.event.start_time || "").slice(0, 5))}</span><br><button type="button" class="small secondary" data-timeline-event="${record.event.id}">Gå til timeline</button></div>`;
       if (existing) {
         existing.popup.push(popupLine);
         return;
@@ -853,9 +855,27 @@ async function renderMapView() {
     } else {
       status.textContent = "Ingen steddata funnet ennå. Legg inn location, startLocation eller endLocation for å få markører.";
     }
+
+    map.on("popupopen", (evt) => {
+      const popup = evt.popup?.getElement?.();
+      if (!popup) return;
+      popup.querySelectorAll("[data-timeline-event]").forEach((btn) => {
+        btn.onclick = () => openTimelineFromMap(Number(btn.dataset.timelineEvent));
+      });
+    });
   } catch (err) {
     status.textContent = `Kunne ikke laste kartet: ${err.message}`;
   }
+}
+
+function openTimelineFromMap(eventId) {
+  state.timelineFocusEventId = Number(eventId) || null;
+  state.view = "timeline";
+  render();
+  requestAnimationFrame(() => {
+    const target = document.getElementById(`timeline-event-${state.timelineFocusEventId}`);
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
 }
 
 function tripExportData() {
