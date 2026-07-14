@@ -141,6 +141,7 @@ const state = {
   routesView: "today",
   mapMode: "all",
   timelineFocusEventId: null,
+  mapRoutePointIds: [],
 };
 
 const MAP_FILTERS = {
@@ -628,6 +629,34 @@ function mapModeButtons() {
   return Object.entries(MAP_FILTERS).map(([key, item]) => `<button class="small ${state.mapMode === key ? "" : "secondary"}" data-map-mode="${key}">${esc(item.label)}</button>`).join("");
 }
 
+function mapRouteBuilderButtons() {
+  return `
+    <button class="small secondary" data-route-clear>Tom rute</button>
+    <button class="small secondary" data-route-pop>Slett siste</button>
+    <button class="small secondary" data-route-open ${state.mapRoutePointIds.length < 2 ? "disabled" : ""}>Åpne i Google Maps</button>
+  `;
+}
+
+function mapRouteSelectionRecords() {
+  const records = mapPlaceRecords();
+  const byId = new Map(records.map((record) => [record.id, record]));
+  return state.mapRoutePointIds.map((id) => byId.get(id)).filter(Boolean);
+}
+
+function mapRouteUrlFromRecords(records) {
+  const coords = records.map((record) => record.coords).filter(Boolean);
+  return googleMapsUrl(coords.map((coord) => `${coord.lat},${coord.lng}`));
+}
+
+function toggleMapRoutePoint(pointId) {
+  const id = String(pointId);
+  if (state.mapRoutePointIds.includes(id)) {
+    state.mapRoutePointIds = state.mapRoutePointIds.filter((value) => value !== id);
+  } else {
+    state.mapRoutePointIds = [...state.mapRoutePointIds, id];
+  }
+}
+
 function parseCoords(value) {
   const match = String(value || "").trim().match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
   if (!match) return null;
@@ -699,9 +728,14 @@ function mapPlaceRecords() {
 function mapView() {
   const items = mapPlaceRecords();
   const routeCount = mapEvents().filter((event) => event.event_type === "drive").length;
+  const selectedRoute = mapRouteSelectionRecords();
+  const selectedRouteUrl = mapRouteUrlFromRecords(selectedRoute);
   return `
     ${header("Kart", "Kartvisning", "Markører og ruter basert på eventenes steddata.")}
-    <div class="card" style="margin-bottom:18px"><div class="actions">${mapModeButtons()}</div></div>
+    <div class="card" style="margin-bottom:18px">
+      <div class="actions">${mapModeButtons()}</div>
+      <div class="actions" style="margin-top:12px">${mapRouteBuilderButtons()}</div>
+    </div>
     <div class="map-shell">
       <div class="card map-panel">
         <div id="map-status" class="map-status">Laster kart...</div>
@@ -711,14 +745,16 @@ function mapView() {
         <div class="card">
           <h3>Datagrunnlag</h3>
           <p class="muted">${items.length} kartpunkter · ${routeCount} kjørerute(r)</p>
+          <p class="muted">Valgt rute: ${selectedRoute.length} punkt(er)</p>
           <div class="list">
-            ${items.slice(0, 12).map((item) => `<div class="item"><div><strong>${icon(item.event.event_type)} ${esc(item.event.title)}</strong><br><span class="muted">${esc(item.label)}: ${esc(item.value)}</span></div><button class="small secondary" data-timeline-event="${item.event.id}">Timeline</button></div>`).join("") || `<div class="empty">Ingen geodatakilder funnet.</div>`}
+            ${items.slice(0, 12).map((item) => `<div class="item"><div><strong>${icon(item.event.event_type)} ${esc(item.event.title)}</strong><br><span class="muted">${esc(item.label)}: ${esc(item.value)}</span></div><div class="actions"><button class="small secondary" data-route-point="${esc(item.id)}">${state.mapRoutePointIds.includes(item.id) ? "Fjern" : "Rute"}</button><button class="small secondary" data-timeline-event="${item.event.id}">Timeline</button></div></div>`).join("") || `<div class="empty">Ingen geodatakilder funnet.</div>`}
           </div>
+          ${selectedRoute.length ? `<div class="actions" style="margin-top:12px"><a target="_blank" href="${esc(selectedRouteUrl)}"><button class="small">Åpne valgt rute</button></a></div><div class="list" style="margin-top:12px">${selectedRoute.map((item, index) => `<div class="item"><div><strong>${index + 1}. ${esc(item.event.title)}</strong><br><span class="muted">${esc(item.label)}: ${esc(item.value)}</span></div><button class="small secondary" data-route-remove="${esc(item.id)}">Fjern</button></div>`).join("")}</div>` : ""}
           ${items.length > 12 ? `<p class="muted" style="margin-top:12px">Viser de første 12 treffene. Resten brukes fortsatt i kartet.</p>` : ""}
         </div>
         <div class="card">
           <h3>Hvordan kartet bygges</h3>
-          <p class="muted">Kartet bruker eksisterende felter som location, startLocation, viaLocations, endLocation og relaterte stedfelt. Rene koordinater på formen lat,lng støttes også.</p>
+          <p class="muted">Kartet bruker eksisterende felter som location, startLocation, viaLocations, endLocation og relaterte stedfelt. Rene koordinater på formen lat,lng støttes også. Velg punkter i rekkefølge for å bygge en rute.</p>
         </div>
       </div>
     </div>
@@ -824,6 +860,7 @@ async function renderMapView() {
 
     const bounds = [];
     const markerIndex = new Map();
+    const routePoints = [];
     records.forEach((record) => {
       const resolved = record.coords || geoByValue.get(record.value);
       if (!resolved) return;
@@ -838,6 +875,7 @@ async function renderMapView() {
       marker.bindPopup(popupLine);
       markerIndex.set(key, { marker, popup: [popupLine] });
       bounds.push([resolved.lat, resolved.lng]);
+      routePoints.push({ record, resolved });
     });
 
     mapEvents().filter((event) => event.event_type === "drive").forEach((event, index) => {
@@ -853,6 +891,30 @@ async function renderMapView() {
       coords.forEach((coord) => bounds.push(coord));
     });
 
+    const selectedRouteRecords = mapRouteSelectionRecords();
+    const selectedRouteCoords = selectedRouteRecords.map((record) => record.coords || geoByValue.get(record.value)).filter(Boolean);
+    if (selectedRouteCoords.length >= 2) {
+      const polyline = L.polyline(selectedRouteCoords.map((coord) => [coord.lat, coord.lng]), {
+        color: "#e07a5f",
+        weight: 5,
+        opacity: 0.95,
+        dashArray: "6 6",
+      }).addTo(map);
+      polyline.bindPopup(`<strong>Valgt rute</strong><br><span class="muted">${selectedRouteRecords.map((record) => esc(record.event.title)).join(" → ")}</span>`);
+    }
+
+    routePoints.forEach(({ record, resolved }) => {
+      const isSelected = state.mapRoutePointIds.includes(record.id);
+      const marker = markerIndex.get(`${resolved.lat.toFixed(5)},${resolved.lng.toFixed(5)}`)?.marker;
+      if (!marker) return;
+      if (isSelected) marker.setIcon(L.divIcon({
+        className: "map-selected-marker",
+        html: '<div class="map-selected-marker-inner"></div>',
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      }));
+    });
+
     if (bounds.length) {
       map.fitBounds(bounds, { padding: [28, 28] });
       status.textContent = `Kartet viser ${records.length} punkt(er) og ${mapEvents().filter((event) => event.event_type === "drive").length} rute(r).`;
@@ -863,6 +925,12 @@ async function renderMapView() {
     map.on("popupopen", (evt) => {
       const popup = evt.popup?.getElement?.();
       if (!popup) return;
+      popup.querySelectorAll("[data-route-point]").forEach((btn) => {
+        btn.onclick = () => {
+          toggleMapRoutePoint(btn.dataset.routePoint);
+          render();
+        };
+      });
       popup.querySelectorAll("[data-timeline-event]").forEach((btn) => {
         btn.onclick = () => openTimelineFromMap(Number(btn.dataset.timelineEvent));
       });
@@ -1225,6 +1293,39 @@ function bind() {
       render();
     };
   });
+
+  document.querySelectorAll("[data-route-point]").forEach((btn) => {
+    btn.onclick = () => {
+      toggleMapRoutePoint(btn.dataset.routePoint);
+      render();
+    };
+  });
+
+  document.querySelectorAll("[data-route-remove]").forEach((btn) => {
+    btn.onclick = () => {
+      state.mapRoutePointIds = state.mapRoutePointIds.filter((id) => id !== String(btn.dataset.routeRemove || ""));
+      render();
+    };
+  });
+
+  const routeClear = document.querySelector("[data-route-clear]");
+  if (routeClear) routeClear.onclick = () => {
+    state.mapRoutePointIds = [];
+    render();
+  };
+
+  const routePop = document.querySelector("[data-route-pop]");
+  if (routePop) routePop.onclick = () => {
+    state.mapRoutePointIds = state.mapRoutePointIds.slice(0, -1);
+    render();
+  };
+
+  const routeOpen = document.querySelector("[data-route-open]");
+  if (routeOpen) routeOpen.onclick = () => {
+    const selected = mapRouteSelectionRecords();
+    const url = mapRouteUrlFromRecords(selected);
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  };
 
   const docForm = document.getElementById("doc-form");
   if (docForm) docForm.onsubmit = uploadDoc;
