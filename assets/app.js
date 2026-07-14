@@ -139,7 +139,22 @@ const state = {
   editEventId: null,
   view: "dashboard",
   routesView: "today",
+  mapMode: "all",
 };
+
+const MAP_FILTERS = {
+  all: { label: "Alle", types: [] },
+  places: { label: "Steder", types: ["poi", "accommodation", "food", "fuel", "shopping", "hike", "special", "photo", "car_rental", "flight"] },
+  routes: { label: "Ruter", types: ["drive"] },
+};
+
+const LEAFLET_CDN = {
+  css: "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
+  js: "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+};
+
+let leafletLoaderPromise = null;
+let mapRenderToken = 0;
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (m) => ({
@@ -293,6 +308,7 @@ function render() {
         <div class="nav">
           ${navButton("dashboard", "🏠", "Dashboard")}
           ${navButton("timeline", "📅", "Timeline")}
+          ${navButton("map", "🗺️", "Kart")}
           ${navButton("routes", "🗺️", "Routes")}
           ${navButton("export", "📤", "Export")}
           ${navButton("documents", "📄", "Documents")}
@@ -307,6 +323,7 @@ function render() {
     ${eventModal()}
   `;
   bind();
+  if (state.view === "map") renderMapView();
 }
 
 function content() {
@@ -314,6 +331,7 @@ function content() {
   return {
     dashboard,
     timeline,
+    map: mapView,
     routes,
     export: exportPage,
     documents,
@@ -602,6 +620,246 @@ function routes() {
     ${state.routesView === "day" ? routesPerDayCard() : ""}
     ${state.routesView === "roadtrip" ? routesRoadtripCard() : ""}
   `;
+}
+
+function mapModeButtons() {
+  return Object.entries(MAP_FILTERS).map(([key, item]) => `<button class="small ${state.mapMode === key ? "" : "secondary"}" data-map-mode="${key}">${esc(item.label)}</button>`).join("");
+}
+
+function parseCoords(value) {
+  const match = String(value || "").trim().match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+  if (!match) return null;
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+}
+
+function eventMapPoints(event) {
+  const data = event.data || {};
+  const points = [];
+  const addPoint = (label, value, kind = "marker") => {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) return;
+    points.push({ label, value: trimmed, kind, coords: parseCoords(trimmed) });
+  };
+
+  if (event.event_type === "drive") {
+    addPoint("Start", data.startLocation, "route");
+    splitViaLocations(data.viaLocations).forEach((value, index) => addPoint(`Via ${index + 1}`, value, "route"));
+    addPoint("Slutt", data.endLocation, "route");
+    return points;
+  }
+
+  if (event.event_type === "accommodation") addPoint("Sted", data.location, "marker");
+  if (event.event_type === "poi") addPoint("Sted", data.location, "marker");
+  if (event.event_type === "photo") {
+    addPoint("Sted", data.location, "marker");
+    addPoint("GPS", data.gps, "marker");
+  }
+  if (event.event_type === "food") addPoint("Sted", data.place, "marker");
+  if (event.event_type === "fuel") addPoint("Sted", data.station, "marker");
+  if (event.event_type === "shopping") addPoint("Sted", data.store, "marker");
+  if (event.event_type === "hike") {
+    addPoint("Start", data.startLocation, "marker");
+    addPoint("Slutt", data.endLocation, "marker");
+    addPoint("Tur", data.trailName, "marker");
+  }
+  if (event.event_type === "car_rental") {
+    addPoint("Henting", data.pickupLocation, "marker");
+    addPoint("Levering", data.dropoffLocation, "marker");
+  }
+  if (event.event_type === "flight") {
+    addPoint("Fra", data.fromAirport, "marker");
+    addPoint("Til", data.toAirport, "marker");
+  }
+  if (event.event_type === "special") addPoint("Sted", data.location, "marker");
+
+  return points;
+}
+
+function mapEvents() {
+  const filter = MAP_FILTERS[state.mapMode] || MAP_FILTERS.all;
+  return itineraryEvents().filter((event) => !filter.types.length || filter.types.includes(event.event_type));
+}
+
+function mapPlaceRecords() {
+  return mapEvents().flatMap((event) => eventMapPoints(event).map((point, index) => ({
+    id: `${event.id}:${index}`,
+    event,
+    label: point.label,
+    value: point.value,
+    kind: point.kind,
+    coords: point.coords,
+  })));
+}
+
+function mapView() {
+  const items = mapPlaceRecords();
+  const routeCount = mapEvents().filter((event) => event.event_type === "drive").length;
+  return `
+    ${header("Kart", "Kartvisning", "Markører og ruter basert på eventenes steddata.")}
+    <div class="card" style="margin-bottom:18px"><div class="actions">${mapModeButtons()}</div></div>
+    <div class="map-shell">
+      <div class="card map-panel">
+        <div id="map-status" class="map-status">Laster kart...</div>
+        <div id="map-canvas" class="map-canvas" aria-label="Kart"></div>
+      </div>
+      <div class="map-sidebar">
+        <div class="card">
+          <h3>Datagrunnlag</h3>
+          <p class="muted">${items.length} kartpunkter · ${routeCount} kjørerute(r)</p>
+          <div class="list">
+            ${items.slice(0, 12).map((item) => `<div class="item"><div><strong>${icon(item.event.event_type)} ${esc(item.event.title)}</strong><br><span class="muted">${esc(item.label)}: ${esc(item.value)}</span></div></div>`).join("") || `<div class="empty">Ingen geodatakilder funnet.</div>`}
+          </div>
+          ${items.length > 12 ? `<p class="muted" style="margin-top:12px">Viser de første 12 treffene. Resten brukes fortsatt i kartet.</p>` : ""}
+        </div>
+        <div class="card">
+          <h3>Hvordan kartet bygges</h3>
+          <p class="muted">Kartet bruker eksisterende felter som location, startLocation, viaLocations, endLocation og relaterte stedfelt. Rene koordinater på formen lat,lng støttes også.</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function mapGroupColor(index) {
+  const colors = ["#e07a5f", "#3d405b", "#81b29a", "#bc6c25", "#577590", "#7f5539"];
+  return colors[index % colors.length];
+}
+
+function geocodeCacheKey(query) {
+  return `travel_os_geocode:${String(query || "").trim().toLowerCase()}`;
+}
+
+async function geocodeValue(query) {
+  const trimmed = String(query || "").trim();
+  if (!trimmed) return null;
+  const coords = parseCoords(trimmed);
+  if (coords) return coords;
+
+  const key = geocodeCacheKey(trimmed);
+  const cached = localStorage.getItem(key);
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch {
+      localStorage.removeItem(key);
+    }
+  }
+
+  const url = new URL("https://nominatim.openstreetmap.org/search");
+  url.searchParams.set("format", "jsonv2");
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("q", trimmed);
+
+  const response = await fetch(url.toString(), { headers: { Accept: "application/json" } });
+  if (!response.ok) return null;
+  const payload = await response.json().catch(() => []);
+  const first = Array.isArray(payload) ? payload[0] : null;
+  if (!first) return null;
+  const result = { lat: Number(first.lat), lng: Number(first.lon) };
+  if (!Number.isFinite(result.lat) || !Number.isFinite(result.lng)) return null;
+  localStorage.setItem(key, JSON.stringify(result));
+  return result;
+}
+
+function ensureLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (!leafletLoaderPromise) {
+    leafletLoaderPromise = new Promise((resolve, reject) => {
+      if (!document.querySelector(`link[href="${LEAFLET_CDN.css}"]`)) {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = LEAFLET_CDN.css;
+        document.head.appendChild(link);
+      }
+      const existing = document.querySelector(`script[src="${LEAFLET_CDN.js}"]`);
+      if (existing && window.L) {
+        resolve();
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = LEAFLET_CDN.js;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("Kunne ikke laste kartbiblioteket."));
+      document.head.appendChild(script);
+    });
+  }
+  return leafletLoaderPromise;
+}
+
+async function renderMapView() {
+  const token = ++mapRenderToken;
+  const status = document.getElementById("map-status");
+  const canvas = document.getElementById("map-canvas");
+  if (!status || !canvas) return;
+
+  status.textContent = "Laster kart og steddata...";
+  canvas.innerHTML = "";
+
+  try {
+    await ensureLeaflet();
+    if (token !== mapRenderToken) return;
+
+    const records = mapPlaceRecords();
+    const geoByValue = new Map();
+    const uniqueValues = [...new Set(records.map((record) => record.value))];
+
+    await Promise.all(uniqueValues.map(async (value) => {
+      const resolved = await geocodeValue(value);
+      if (resolved) geoByValue.set(value, resolved);
+    }));
+
+    if (token !== mapRenderToken) return;
+
+    const map = L.map(canvas, { scrollWheelZoom: true });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+
+    const bounds = [];
+    const markerIndex = new Map();
+    records.forEach((record) => {
+      const resolved = record.coords || geoByValue.get(record.value);
+      if (!resolved) return;
+      const key = `${resolved.lat.toFixed(5)},${resolved.lng.toFixed(5)}`;
+      const existing = markerIndex.get(key);
+      const popupLine = `<div><strong>${icon(record.event.event_type)} ${esc(record.event.title)}</strong><br><span>${esc(record.label)}: ${esc(record.value)}</span><br><span class="muted">${esc(record.event.start_date)} ${esc((record.event.start_time || "").slice(0, 5))}</span></div>`;
+      if (existing) {
+        existing.popup.push(popupLine);
+        return;
+      }
+      const marker = L.marker([resolved.lat, resolved.lng]).addTo(map);
+      marker.bindPopup(popupLine);
+      markerIndex.set(key, { marker, popup: [popupLine] });
+      bounds.push([resolved.lat, resolved.lng]);
+    });
+
+    mapEvents().filter((event) => event.event_type === "drive").forEach((event, index) => {
+      const points = eventMapPoints(event).map((point) => point.coords || geoByValue.get(point.value)).filter(Boolean);
+      if (points.length < 2) return;
+      const coords = points.map((point) => [point.lat, point.lng]);
+      const polyline = L.polyline(coords, {
+        color: mapGroupColor(index),
+        weight: 4,
+        opacity: 0.8,
+      }).addTo(map);
+      polyline.bindPopup(`<strong>${esc(event.title)}</strong><br><span class="muted">${esc(event.start_date)} · ${esc(drivePoints(event).join(" → "))}</span>`);
+      coords.forEach((coord) => bounds.push(coord));
+    });
+
+    if (bounds.length) {
+      map.fitBounds(bounds, { padding: [28, 28] });
+      status.textContent = `Kartet viser ${records.length} punkt(er) og ${mapEvents().filter((event) => event.event_type === "drive").length} rute(r).`;
+    } else {
+      map.setView([59.9, 10.7], 4);
+      status.textContent = "Ingen steddata funnet ennå. Legg inn location, startLocation eller endLocation for å få markører.";
+    }
+  } catch (err) {
+    status.textContent = `Kunne ikke laste kartet: ${err.message}`;
+  }
 }
 
 function tripExportData() {
@@ -937,6 +1195,13 @@ function bind() {
   document.querySelectorAll("[data-routes-view]").forEach((btn) => {
     btn.onclick = () => {
       state.routesView = btn.dataset.routesView || "today";
+      render();
+    };
+  });
+
+  document.querySelectorAll("[data-map-mode]").forEach((btn) => {
+    btn.onclick = () => {
+      state.mapMode = btn.dataset.mapMode || "all";
       render();
     };
   });
